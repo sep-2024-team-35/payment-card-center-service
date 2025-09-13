@@ -29,7 +29,7 @@ type Config struct {
 
 var Global *Config
 
-func LoadConfig(path string) {
+func Load(path string) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		log.Fatalf("Failed to read config: %v", err)

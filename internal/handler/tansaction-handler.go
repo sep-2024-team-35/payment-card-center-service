@@ -2,9 +2,13 @@ package handler
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"errors"
+	"log"
 	"net/http"
-	"payment-card-center-service/internal/service"
+	"strings"
+
+	"github.com/sep-2024-team-35/payment-card-center-service/internal/dto"
+	"github.com/sep-2024-team-35/payment-card-center-service/internal/service"
 )
 
 type TransactionHandler struct {
@@ -16,41 +20,90 @@ func NewTransactionHandler(pcc *service.PCCService) *TransactionHandler {
 }
 
 func (h *TransactionHandler) Execute(w http.ResponseWriter, r *http.Request) {
-	body, _ := ioutil.ReadAll(r.Body)
-	defer r.Body.Close()
+	log.Printf("⟳ Received /transactions request from %s", r.RemoteAddr)
+	defer closeRequestBody(r)
 
-	var req struct {
-		AcquirerOrderID string  `json:"acquirerOrderId"`
-		AcquirerTS      string  `json:"acquirerTimestamp"`
-		Pan             string  `json:"pan"`
-		Amount          float64 `json:"amount"`
-		Currency        string  `json:"currency"`
-		// TransactionDto itd...
-	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	// Ekstraktujemo bankID iz PAN-a (npr. prvih 4 cifre)
-	bankID := req.Pan[:4]
-	_, err := h.pcc.RouteToIssuer(bankID, req)
+	req, err := decodePaymentRequest(r)
 	if err != nil {
-		http.Error(w, "bank not found", http.StatusNotFound)
+		log.Printf("✗ Decode error: %v", err)
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+	log.Printf("✔ Parsed request: OrderID=%s, PAN=%s",
+		req.AcquirerOrderID, maskPAN(req.PrimaryAccountNumber),
+	)
+
+	bankID, err := extractBankID(req.PrimaryAccountNumber)
+	if err != nil {
+		log.Printf("✗ Invalid PAN: %v", err)
+		writeJSONError(w, http.StatusBadRequest, "invalid primaryAccountNumber")
 		return
 	}
 
-	// TODO: HTTP client ka bank.URL sa timeout i retry mehanizmom
+	bank, err := h.pcc.RouteToIssuer(bankID, req)
+	if err != nil {
+		log.Printf("✗ Routing failed: bankID=%s not found", bankID)
+		writeJSONError(w, http.StatusNotFound, "bank not found")
+		return
+	}
+	log.Printf("→ Routing to Issuer: %s (%s)", bank.Name, bank.URL)
 
-	resp := struct {
+	// TODO: dispatch to bank.URL via HTTP client with timeout + retry
+
+	response := struct {
 		AcquirerOrderID string `json:"acquirerOrderId"`
 		Status          string `json:"status"`
-		// issuerOrderId, timestamps...
 	}{
 		AcquirerOrderID: req.AcquirerOrderID,
 		Status:          "Pending",
 	}
 
+	if err := writeJSON(w, http.StatusOK, response); err != nil {
+		log.Printf("✗ Encode response error: %v", err)
+	} else {
+		log.Printf("✓ Response sent: OrderID=%s, Status=%s",
+			response.AcquirerOrderID, response.Status,
+		)
+	}
+}
+
+func decodePaymentRequest(r *http.Request) (dto.PaymentRequestDTO, error) {
+	var req dto.PaymentRequestDTO
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return req, err
+	}
+	return req, nil
+}
+
+func extractBankID(pan string) (string, error) {
+	if len(pan) < 4 {
+		return "", errors.New("PAN too short")
+	}
+	return pan[:4], nil
+}
+
+func closeRequestBody(r *http.Request) {
+	if err := r.Body.Close(); err != nil {
+		log.Printf("failed to close request body: %v", err)
+	}
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	return json.NewEncoder(w).Encode(payload)
+}
+
+func maskPAN(pan string) string {
+	n := len(pan)
+	if n <= 4 {
+		return strings.Repeat("*", n)
+	}
+	return strings.Repeat("*", n-4) + pan[n-4:]
 }
