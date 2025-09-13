@@ -25,7 +25,7 @@ func main() {
 	mux.HandleFunc("/transactions", h.Execute)
 
 	// Start HTTPS server sa TLS certifikatima iz konfiguracije
-	addr := fmt.Sprintf(":%d", config.Global.Server.Port)
+	addr := fmt.Sprintf(":%s", config.Global.Server.Port)
 	log.Printf("PCC listening on %s …", addr)
 	log.Fatal(http.ListenAndServeTLS(
 		addr,
