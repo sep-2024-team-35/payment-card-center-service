@@ -1,0 +1,109 @@
+package handler
+
+import (
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"strings"
+
+	"github.com/sep-2024-team-35/payment-card-center-service/internal/dto"
+	"github.com/sep-2024-team-35/payment-card-center-service/internal/service"
+)
+
+type TransactionHandler struct {
+	pcc *service.PCCService
+}
+
+func NewTransactionHandler(pcc *service.PCCService) *TransactionHandler {
+	return &TransactionHandler{pcc: pcc}
+}
+
+func (h *TransactionHandler) Execute(w http.ResponseWriter, r *http.Request) {
+	log.Printf("⟳ Received /transactions request from %s", r.RemoteAddr)
+	defer closeRequestBody(r)
+
+	req, err := decodePaymentRequest(r)
+	if err != nil {
+		log.Printf("✗ Decode error: %v", err)
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+	log.Printf("✔ Parsed request: OrderID=%s, PAN=%s",
+		req.AcquirerOrderID, maskPAN(req.PrimaryAccountNumber),
+	)
+
+	bankID, err := extractBankID(req.PrimaryAccountNumber)
+	if err != nil {
+		log.Printf("✗ Invalid PAN: %v", err)
+		writeJSONError(w, http.StatusBadRequest, "invalid primaryAccountNumber")
+		return
+	}
+
+	bank, err := h.pcc.RouteToIssuer(bankID, req)
+	if err != nil {
+		log.Printf("✗ Routing failed: bankID=%s not found", bankID)
+		writeJSONError(w, http.StatusNotFound, "bank not found")
+		return
+	}
+	log.Printf("→ Routing to Issuer: %s (%s)", bank.Name, bank.URL)
+
+	// TODO: dispatch to bank.URL via HTTP client with timeout + retry
+
+	response := struct {
+		AcquirerOrderID string `json:"acquirerOrderId"`
+		Status          string `json:"status"`
+	}{
+		AcquirerOrderID: req.AcquirerOrderID,
+		Status:          "Pending",
+	}
+
+	if err := writeJSON(w, http.StatusOK, response); err != nil {
+		log.Printf("✗ Encode response error: %v", err)
+	} else {
+		log.Printf("✓ Response sent: OrderID=%s, Status=%s",
+			response.AcquirerOrderID, response.Status,
+		)
+	}
+}
+
+func decodePaymentRequest(r *http.Request) (dto.PaymentRequestDTO, error) {
+	var req dto.PaymentRequestDTO
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return req, err
+	}
+	return req, nil
+}
+
+func extractBankID(pan string) (string, error) {
+	if len(pan) < 4 {
+		return "", errors.New("PAN too short")
+	}
+	return pan[:4], nil
+}
+
+func closeRequestBody(r *http.Request) {
+	if err := r.Body.Close(); err != nil {
+		log.Printf("failed to close request body: %v", err)
+	}
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	return json.NewEncoder(w).Encode(payload)
+}
+
+func maskPAN(pan string) string {
+	n := len(pan)
+	if n <= 4 {
+		return strings.Repeat("*", n)
+	}
+	return strings.Repeat("*", n-4) + pan[n-4:]
+}

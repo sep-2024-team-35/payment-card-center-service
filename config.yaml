@@ -1,0 +1,12 @@
+banks:
+  - id: "1233"
+    name: "eAcquirerBank"
+    url: "https://acquirer.example.com/api/payments/pay"
+  - id: "2567"
+    name: "eIssuerBank"
+    url: "https://issuer.example.com/api/payments/pay"
+server:
+  port: 8080
+tls:
+  certFile: "/etc/ssl/certs/pcc.crt"
+  keyFile: "/etc/ssl/private/pcc.key"
