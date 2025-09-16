@@ -1,8 +1,8 @@
 banks:
-  - id: "1233"
+  - id: "BANK123ACQ"
     name: "eAcquirerBank"
     url: "https://acquirer.example.com/api/payments/pay"
-  - id: "2567"
+  - id: "BANK456ISS"
     name: "eIssuerBank"
     url: "https://issuer.example.com/api/payments/pay"
 server:
