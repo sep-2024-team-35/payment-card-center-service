@@ -19,6 +19,18 @@ func NewTransactionHandler(pcc *service.PCCService) *TransactionHandler {
 	return &TransactionHandler{pcc: pcc}
 }
 
+// Execute godoc
+// @Summary Submit interbank transaction request
+// @Description Receives a payment request from Acquirer bank and routes it to the Issuer bank
+// @Tags Transactions
+// @Accept json
+// @Produce json
+// @Param request body dto.PaymentRequestDTO true "Payment request payload"
+// @Success 200 {object} map[string]string "Transaction successfully routed"
+// @Failure 400 {object} map[string]string "Invalid input"
+// @Failure 404 {object} map[string]string "Bank not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/transactions [post]
 func (h *TransactionHandler) Execute(w http.ResponseWriter, r *http.Request) {
 	log.Printf("⟳ Received /transactions request from %s", r.RemoteAddr)
 	defer closeRequestBody(r)
