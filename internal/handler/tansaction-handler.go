@@ -88,10 +88,10 @@ func decodePaymentRequest(r *http.Request) (dto.PaymentRequestDTO, error) {
 }
 
 func extractBankID(pan string) (string, error) {
-	if len(pan) < 4 {
+	if len(pan) < 16 {
 		return "", errors.New("PAN too short")
 	}
-	return pan[:4], nil
+	return pan[:6], nil
 }
 
 func closeRequestBody(r *http.Request) {

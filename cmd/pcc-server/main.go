@@ -38,10 +38,6 @@ func main() {
 
 	// Start HTTPS server
 	addr := fmt.Sprintf(":%s", config.Global.Server.Port)
-	log.Printf("PCC listening on %s …", addr)
-	log.Fatal(router.RunTLS(
-		addr,
-		config.Global.TLS.CertFile,
-		config.Global.TLS.KeyFile,
-	))
+	log.Printf("Listening on %s …", addr)
+	log.Fatal(router.Run(addr))
 }
