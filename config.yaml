@@ -1,10 +1,10 @@
 banks:
   - id: "387952"
     name: "eAcquirerBank"
-    url: "https://acquirer.example.com/api/payments/pay"
+    url: "http://localhost:8080/api/payment/external-pay"
   - id: "497335"
     name: "eIssuerBank"
-    url: "https://issuer.example.com/api/payments/pay"
+    url: "http://ebanksep-be-issuer:8080/api/payment/external-pay"
 server:
   port: 8081
 tls:

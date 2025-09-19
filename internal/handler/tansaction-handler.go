@@ -52,35 +52,22 @@ func (h *TransactionHandler) Execute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bank, err := h.pcc.RouteToIssuer(bankID, req)
+	response, err := h.pcc.RouteToIssuer(bankID, req)
 	if err != nil {
-		log.Printf("✗ Routing failed: bankID=%s not found", bankID)
-		writeJSONError(w, http.StatusNotFound, "bank not found")
+		log.Printf("✗ Routing failed: bankID=%s, error=%v", bankID, err)
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
-	}
-	log.Printf("→ Routing to Issuer: %s (%s)", bank.Name, bank.URL)
-
-	// TODO: dispatch to bank.URL via HTTP client with timeout + retry
-
-	response := struct {
-		AcquirerOrderID string `json:"acquirerOrderId"`
-		Status          string `json:"status"`
-	}{
-		AcquirerOrderID: req.AcquirerOrderID,
-		Status:          "Pending",
 	}
 
 	if err := writeJSON(w, http.StatusOK, response); err != nil {
 		log.Printf("✗ Encode response error: %v", err)
 	} else {
-		log.Printf("✓ Response sent: OrderID=%s, Status=%s",
-			response.AcquirerOrderID, response.Status,
-		)
+		log.Printf("✓ Response sent: OrderID=%s, Status=%s", response.AcquirerOrderID, response.Status)
 	}
 }
 
-func decodePaymentRequest(r *http.Request) (dto.PaymentRequestDTO, error) {
-	var req dto.PaymentRequestDTO
+func decodePaymentRequest(r *http.Request) (dto.ExternalTransactionRequestDTO, error) {
+	var req dto.ExternalTransactionRequestDTO
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return req, err
 	}
