@@ -1,57 +1,56 @@
 # ---------- Stage 1: Build ----------
-FROM golang:1.24.4-alpine AS builder
+FROM golang:1.24-bullseye AS builder
 
 LABEL maintainer="Luka Usljebrka <lukauslje13@gmail.com>" \
       stage="builder"
 
 WORKDIR /src
 
+# copy go modules first (layer caching)
 COPY go.mod go.sum ./
 RUN go mod download
 
+# copy source
 COPY . .
 
+# allow cross-compilation
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
-RUN CGO_ENABLED=0 \
-    GOOS=${TARGETOS} \
-    GOARCH=${TARGETARCH} \
-    go build \
-      -ldflags="-s -w" \
-      -o /app/pcc-server \
-      ./cmd/pcc-server
+# build binary (with CGO for TLS if needed later)
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -ldflags="-s -w" -o /app/pcc-server ./cmd/pcc-server
 
 # ---------- Stage 2: Runtime ----------
-FROM alpine:3.18
+FROM debian:bookworm-slim
 
 LABEL maintainer="Luka Usljebrka <lukauslje13@gmail.com>" \
       app="payment-card-center-service" \
       description="Payment Card Center service"
 
-RUN apk add --no-cache ca-certificates tzdata \
-    && update-ca-certificates || true
+# install only required runtime packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates tzdata && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN addgroup -S app && adduser -S -G app -u 10001 app
+# create non-root user
+RUN groupadd -r app && useradd -r -g app -u 10001 app
 
 WORKDIR /app
 
-# Kopiranje binarnog fajla i konfiguracije
+# copy binary and config
 COPY --from=builder /app/pcc-server /app/pcc-server
 COPY --from=builder /src/config.yaml /app/config.yaml
 
-# Kopiranje TLS sertifikata direktno u image
-COPY certs/certs/pcc.crt /etc/ssl/certs/pcc.crt
-COPY certs/private/pcc.key /etc/ssl/private/pcc.key
-
-# Prava pristupa
-RUN chown -R app:app /app /etc/ssl
+# fix ownership
+RUN chown -R app:app /app
 
 USER app
 
 ENV APP_ENV=production \
-    PORT=8080
+    PORT=8081
 
-EXPOSE 8080
+EXPOSE 8081
 
 ENTRYPOINT ["/app/pcc-server"]

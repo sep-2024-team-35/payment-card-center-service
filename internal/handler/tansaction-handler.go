@@ -19,6 +19,18 @@ func NewTransactionHandler(pcc *service.PCCService) *TransactionHandler {
 	return &TransactionHandler{pcc: pcc}
 }
 
+// Execute godoc
+// @Summary Submit interbank transaction request
+// @Description Receives a payment request from Acquirer bank and routes it to the Issuer bank
+// @Tags Transactions
+// @Accept json
+// @Produce json
+// @Param request body dto.PaymentRequestDTO true "Payment request payload"
+// @Success 200 {object} map[string]string "Transaction successfully routed"
+// @Failure 400 {object} map[string]string "Invalid input"
+// @Failure 404 {object} map[string]string "Bank not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/transactions [post]
 func (h *TransactionHandler) Execute(w http.ResponseWriter, r *http.Request) {
 	log.Printf("⟳ Received /transactions request from %s", r.RemoteAddr)
 	defer closeRequestBody(r)
@@ -40,35 +52,22 @@ func (h *TransactionHandler) Execute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bank, err := h.pcc.RouteToIssuer(bankID, req)
+	response, err := h.pcc.RouteToIssuer(bankID, req)
 	if err != nil {
-		log.Printf("✗ Routing failed: bankID=%s not found", bankID)
-		writeJSONError(w, http.StatusNotFound, "bank not found")
+		log.Printf("✗ Routing failed: bankID=%s, error=%v", bankID, err)
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
-	}
-	log.Printf("→ Routing to Issuer: %s (%s)", bank.Name, bank.URL)
-
-	// TODO: dispatch to bank.URL via HTTP client with timeout + retry
-
-	response := struct {
-		AcquirerOrderID string `json:"acquirerOrderId"`
-		Status          string `json:"status"`
-	}{
-		AcquirerOrderID: req.AcquirerOrderID,
-		Status:          "Pending",
 	}
 
 	if err := writeJSON(w, http.StatusOK, response); err != nil {
 		log.Printf("✗ Encode response error: %v", err)
 	} else {
-		log.Printf("✓ Response sent: OrderID=%s, Status=%s",
-			response.AcquirerOrderID, response.Status,
-		)
+		log.Printf("✓ Response sent: OrderID=%s, Status=%s", response.AcquirerOrderID, response.Status)
 	}
 }
 
-func decodePaymentRequest(r *http.Request) (dto.PaymentRequestDTO, error) {
-	var req dto.PaymentRequestDTO
+func decodePaymentRequest(r *http.Request) (dto.ExternalTransactionRequestDTO, error) {
+	var req dto.ExternalTransactionRequestDTO
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return req, err
 	}
@@ -76,10 +75,10 @@ func decodePaymentRequest(r *http.Request) (dto.PaymentRequestDTO, error) {
 }
 
 func extractBankID(pan string) (string, error) {
-	if len(pan) < 4 {
+	if len(pan) < 16 {
 		return "", errors.New("PAN too short")
 	}
-	return pan[:4], nil
+	return pan[:6], nil
 }
 
 func closeRequestBody(r *http.Request) {
