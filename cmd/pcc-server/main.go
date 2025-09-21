@@ -25,19 +25,26 @@ import (
 )
 
 func main() {
-	// Load config
+	log.Println("🚀 [BOOT] Starting Payment Card Center API...")
+	
 	config.Load("config.yaml")
+	log.Printf("⚙️  [CONFIG] Loaded successfully. Server will run on port %s", config.Global.Server.Port)
 
-	// Init dependencies
 	repo := repository.NewBankRepository()
+	log.Println("💾 [INIT] BankRepository initialized")
+
 	svc := service.NewPCCService(repo)
+	log.Println("🛠️  [INIT] PCCService initialized")
+
 	h := handler.NewTransactionHandler(svc)
+	log.Println("📦 [INIT] TransactionHandler initialized")
 
-	// Setup router
 	router := routes.SetupRoutes(h)
+	log.Println("🛣️  [ROUTER] Routes configured successfully")
 
-	// Start HTTPS server
 	addr := fmt.Sprintf(":%s", config.Global.Server.Port)
-	log.Printf("Listening on %s …", addr)
-	log.Fatal(router.Run(addr))
+	log.Printf("🌐 [SERVER] Listening on %s …", addr)
+	if err := router.Run(addr); err != nil {
+		log.Fatalf("❌ [FATAL] Could not start server: %v", err)
+	}
 }
